@@ -1,0 +1,233 @@
+/* Tema Escuro para calendário */
+:root {
+    color-scheme: dark;
+}
+
+body {
+    background: #0b1220;
+    color: #e5e7eb;
+}
+
+#calendar {
+    background: #0f172a;
+    border-color: #1f2937;
+    box-shadow: 0 4px 24px #0008;
+}
+
+.fc,
+.popover {
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th,
+.fc-theme-bootstrap td,
+.fc-theme-bootstrap th {
+    border-color: #1f2937;
+    /* dark grid lines */
+}
+
+.fc-theme-standard .fc-scrollgrid,
+.fc-theme-standard .fc-scrollgrid table,
+.fc-theme-bootstrap .fc-scrollgrid,
+.fc-theme-bootstrap .fc-scrollgrid table {
+    border-color: #1f2937;
+}
+
+.fc-col-header,
+.fc-col-header-cell {
+    background: #111827;
+    color: #e5e7eb;
+}
+
+.fc-timegrid-axis,
+.fc-timegrid-axis-frame {
+    background: #0b1220;
+    color: #94a3b8;
+    border-color: #1f2937;
+}
+
+.fc-timegrid-slot {
+    border-bottom: 1px solid #1f2937;
+    /* time slot lines */
+}
+
+.fc-scrollgrid-shrink {
+    background: #0b1220;
+    /* gutter areas */
+}
+
+.fc-timegrid-divider {
+    border-color: #1f2937;
+}
+
+.fc-now-indicator-line {
+    border-color: #ef4444;
+    /* red now-indicator */
+}
+
+.fc-daygrid-day-number,
+.fc-col-header-cell-cushion,
+.fc-timegrid-axis-cushion {
+    color: #cbd5e1;
+}
+
+.fc-toolbar-title {
+    color: #e2e8f0;
+}
+
+.fc a,
+.fc a:hover,
+.fc a:focus {
+    color: #93c5fd;
+}
+
+.fc-button {
+    background: #334155;
+    color: #e5e7eb;
+}
+
+.fc-button:hover,
+.fc-button:focus {
+    background: #1f2937;
+}
+
+.fc-daygrid-day.fc-day-today {
+    background: #1e293b;
+}
+
+/* More link in month view */
+.fc .fc-daygrid-more-link {
+    color: #93c5fd;
+}
+
+/* Today column for timeGrid */
+.fc-timegrid-col.fc-day-today {
+    background: #132133;
+}
+
+/* Preserve event colors provided by FullCalendar/event data */
+.fc-list-event {
+    background: #0b1220;
+    color: #93c5fd;
+    border-left-color: #60a5fa;
+}
+
+/* Não sobrepor cor dos eventos no modo escuro: respeitar a cor do evento */
+/* (Sem fallback de background escuro em eventos) */
+/* Selection highlight */
+.fc .fc-highlight {
+    background: #2563eb33;
+}
+
+/* List views */
+.fc .fc-list,
+.fc .fc-list-table,
+.fc .fc-theme-standard .fc-list,
+.fc .fc-theme-standard .fc-list-table {
+    background: #0f172a;
+    color: #e5e7eb;
+    border-color: #1f2937;
+}
+
+.fc .fc-list-day-cushion {
+    background: #111827;
+    color: #e5e7eb;
+    border-bottom: 1px solid #1f2937;
+}
+
+.fc .fc-list-event:hover {
+    background: #111827;
+}
+
+.fc .fc-list-event-time,
+.fc .fc-list-event-title {
+    color: #cbd5e1;
+}
+
+/* MultiMonth */
+.fc .fc-multimonth-title {
+    background: #111827;
+    color: #e5e7eb;
+    border-bottom: 1px solid #1f2937;
+}
+
+.fc .fc-multimonth {
+    background: #0f172a;
+}
+
+.fc .fc-multimonth .fc-multimonth-month {
+    background: #0f172a;
+    border-color: #1f2937;
+}
+
+.fc .fc-multimonth .fc-daygrid-day-number {
+    color: #cbd5e1;
+}
+
+.fc .fc-multimonth .fc-daygrid-day.fc-day-today {
+    background: #1e293b;
+}
+
+.fc .fc-multimonth .fc-col-header,
+.fc .fc-multimonth .fc-col-header-cell {
+    background: #111827;
+    color: #e5e7eb;
+}
+
+.fc .fc-multimonth .fc-daygrid-day,
+.fc .fc-multimonth .fc-daygrid-day-frame {
+    background: #0f172a;
+}
+
+/* Holiday highlight in dark mode (month and multiMonth) */
+.fc .fc-day-holiday,
+.fc .fc-multimonth .fc-day-holiday,
+.fc .fc-multimonth .fc-daygrid-day.fc-day-holiday,
+.fc .fc-daygrid-day.fc-day-holiday .fc-daygrid-day-frame {
+    background: #471919 !important;
+    /* dark red tint */
+}
+
+/* Popovers */
+.popover .popover-header {
+    background: #111827;
+    color: #e5e7eb;
+    border-bottom: 1px solid #1f2937;
+}
+
+.popover .popover-body {
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+/* FullCalendar overflow popover */
+.fc .fc-popover {
+    background: #0f172a;
+    color: #e5e7eb;
+    border: 1px solid #1f2937;
+}
+
+.fc .fc-popover .fc-popover-header {
+    background: #111827;
+    color: #e5e7eb;
+    border-bottom: 1px solid #1f2937;
+}
+
+.fc .fc-popover .fc-popover-body {
+    background: #0f172a;
+}
+
+/* Settings active */
+#settingsMenu .btn.active {
+    background: #1e293b;
+    color: #e5e7eb;
+    border-color: #60a5fa;
+}
+
+/* Settings headings (text-muted) no escuro */
+#settingsMenu .text-muted,
+.popover .text-muted {
+    color: #94a3b8 !important;
+}

@@ -1,0 +1,4 @@
+-all_day boolean no database é a melhor escolha mesmo? melhor maneira de lidar com all day
+-menu de configurações [dias da semana que mostra-tema]
+-adicionar pacientes como nome de evento opcional
+-numero de telefone desse paciente

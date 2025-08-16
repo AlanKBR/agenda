@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="Agenda odontológica moderna com FullCalendar e Flask.">
+    <meta name="keywords" content="agenda, odontologia, calendário, fullcalendar, flask, consulta, clínica">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OdontoClin - Agenda</title>
+    <!-- Bootstrap 5 CSS local -->
+    <link href="/static/bootstrap.min.css" rel="stylesheet">
+    <!-- FullCalendar local bundle -->
+    <script src="/static/fullcalendar/fullcalendar.global.min.js"></script>
+    <!-- Bootstrap 5 JS local -->
+    <script src="/static/bootstrap.bundle.min.js"></script>
+    <!-- CSS customizado -->
+    <link href="/static/calendar-theme.css" rel="stylesheet">
+</head>
+<body>
+    <div id="calendar"></div>
+    <div id="popover-container"></div>
+    <div id="contextmenu-container"></div>
+    <script>
+        // Carregar modal e só então inicializar o calendário
+        document.addEventListener('DOMContentLoaded', function() {
+            Promise.all([
+                fetch('/static/event-popover.html').then(res => res.text()),
+                fetch('/static/event-contextmenu.html').then(res => res.text())
+            ]).then(([popoverHtml, contextHtml]) => {
+                document.getElementById('popover-container').innerHTML = popoverHtml;
+                document.getElementById('contextmenu-container').innerHTML = contextHtml;
+                // Inicializar calendário após popover/contextmenu estar no DOM e bundle carregado
+                const plugins = [];
+                    if (window.FullCalendar) {
+                        // dayGridPlugin removido para não habilitar dayGridWeek/dayGridDay
+                        if (FullCalendar.timeGridPlugin) plugins.push(FullCalendar.timeGridPlugin);
+                        if (FullCalendar.listPlugin) plugins.push(FullCalendar.listPlugin);
+                        if (FullCalendar.interactionPlugin) plugins.push(FullCalendar.interactionPlugin);
+                        if (FullCalendar.multiMonthPlugin) plugins.push(FullCalendar.multiMonthPlugin);
+                        // Removido timelinePlugin, resourcePlugin e resourceTimelinePlugin para não habilitar visualizações de linha
+                        if (FullCalendar.premiumCommonPlugin) plugins.push(FullCalendar.premiumCommonPlugin);
+                        if (FullCalendar.scrollGridPlugin) plugins.push(FullCalendar.scrollGridPlugin);
+                        if (FullCalendar.adaptivePlugin) plugins.push(FullCalendar.adaptivePlugin);
+                    }
+                    const calendarEl = document.getElementById('calendar');
+                    const calendar = new FullCalendar.Calendar(calendarEl, {
+                        schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives',
+                        themeSystem: 'bootstrap5',
+                        locale: 'pt-br',
+                        initialView: 'timeGridWeek',
+                        headerToolbar: {
+                            left: 'prev,next today',
+                            center: 'title',
+                            right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek,multiMonthYear'
+                        },
+                        views: {
+                            multiMonthYear: { type: 'multiMonth', duration: { years: 1 } }
+                        },
+                        plugins: plugins,
+                        selectable: true,
+                        editable: true,
+                        nowIndicator: true,
+                        navLinks: true,
+                        eventSources: [
+                            {
+                                url: '/events',
+                                method: 'GET',
+                                failure: () => { alert('Falha ao carregar eventos!'); }
+                            }
+                        ],
+                        select: function(info) {
+                            // Só ativa no modo dayGridMonth (allDay)
+                            if (info.view && info.view.type === 'dayGridMonth') {
+                                const popover = document.getElementById('eventPopover');
+                                popover.style.display = 'block';
+                                // Posição do clique
+                                let x = 0, y = 0;
+                                if (info.jsEvent) {
+                                    x = info.jsEvent.clientX;
+                                    y = info.jsEvent.clientY;
+                                } else {
+                                    const rect = calendarEl.getBoundingClientRect();
+                                    x = rect.left + rect.width/2;
+                                    y = rect.top + rect.height/2;
+                                }
+                                setTimeout(() => {
+                                    const popRect = popover.getBoundingClientRect();
+                                    const calRect = calendarEl.getBoundingClientRect();
+                                    let left = x;
+                                    let top = y + window.scrollY;
+                                    if (left + popRect.width > calRect.right) left = calRect.right - popRect.width;
+                                    if (left < calRect.left) left = calRect.left;
+                                    if (top + popRect.height > calRect.bottom + window.scrollY) top = calRect.bottom + window.scrollY - popRect.height;
+                                    if (top < calRect.top + window.scrollY) top = calRect.top + window.scrollY;
+                                    popover.style.left = left + 'px';
+                                    popover.style.top = top + 'px';
+                            // Posição do clique
+                            let x = 0, y = 0;
+                            if (info.jsEvent) {
+                                x = info.jsEvent.clientX;
+                                y = info.jsEvent.clientY;
+                            } else {
+                                // fallback: centro do calendário
+                                const rect = calendarEl.getBoundingClientRect();
+                                x = rect.left + rect.width/2;
+                                y = rect.top + rect.height/2;
+                            }
+                            const popover = document.getElementById('eventPopover');
+                            popover.style.display = 'block';
+                            // Ajuste inteligente para não sair do calendário
+                            setTimeout(() => {
+                                const popRect = popover.getBoundingClientRect();
+                                const calRect = calendarEl.getBoundingClientRect();
+                                let left = x;
+                                let top = y + window.scrollY;
+                                // Se passar da direita, alinhar à esquerda
+                                if (left + popRect.width > calRect.right) {
+                                    left = calRect.right - popRect.width;
+                                }
+                                // Se passar da esquerda, alinhar à esquerda do calendário
+                                if (left < calRect.left) {
+                                    left = calRect.left;
+                                }
+                                // Se passar do fundo, alinhar acima
+                                if (top + popRect.height > calRect.bottom + window.scrollY) {
+                                    top = calRect.bottom + window.scrollY - popRect.height;
+                                }
+                                // Se passar do topo, alinhar ao topo do calendário
+                                if (top < calRect.top + window.scrollY) {
+                                    top = calRect.top + window.scrollY;
+                                }
+                                popover.style.left = left + 'px';
+                                popover.style.top = top + 'px';
+                            }, 10);
+                            if (info.allDay) {
+                                document.getElementById('popoverEventTitle').value = '';
+                                document.getElementById('popoverEventStart').value = info.startStr;
+                                if (info.endStr) {
+                                    const endDate = new Date(info.endStr);
+                                    endDate.setDate(endDate.getDate() - 1);
+                                    document.getElementById('popoverEventEnd').value = endDate.toISOString().slice(0,10);
+                                } else {
+                                    document.getElementById('popoverEventEnd').value = '';
+                                }
+                            } else {
+                                document.getElementById('popoverEventTitle').value = '';
+                                document.getElementById('popoverEventStart').value = info.startStr.slice(0,16);
+                                document.getElementById('popoverEventEnd').value = info.endStr ? info.endStr.slice(0,16) : '';
+                            }
+                            document.getElementById('popoverEventDesc').value = '';
+                            setTimeout(() => {
+                                document.getElementById('popoverEventTitle').focus();
+                            }, 50);
+                            function closePopover() {
+                                popover.style.display = 'none';
+                                document.removeEventListener('mousedown', outsideClickListener);
+                            }
+                            function outsideClickListener(e) {
+                                if (!popover.contains(e.target)) closePopover();
+                            }
+                            setTimeout(() => {
+                                document.addEventListener('mousedown', outsideClickListener);
+                            }, 10);
+                            }, 10);
+                            document.getElementById('popoverEventTitle').value = '';
+                            // Se for allDay, usar apenas a data (YYYY-MM-DD), senão usar datetime-local (YYYY-MM-DDTHH:mm)
+                            if (info.allDay) {
+                                document.getElementById('popoverEventStart').value = info.startStr;
+                                // O end de allDay é exclusivo, então subtrai 1 dia para mostrar corretamente
+                                if (info.endStr) {
+                                    const endDate = new Date(info.endStr);
+                                    endDate.setDate(endDate.getDate() - 1);
+                                    document.getElementById('popoverEventEnd').value = endDate.toISOString().slice(0,10);
+                                } else {
+                                    document.getElementById('popoverEventEnd').value = '';
+                                }
+                            } else {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            Promise.all([
+                fetch('/static/event-popover.html').then(res => res.text()),
+                fetch('/static/event-contextmenu.html').then(res => res.text())
+            ]).then(([popoverHtml, contextHtml]) => {
+                document.getElementById('popover-container').innerHTML = popoverHtml;
+                document.getElementById('contextmenu-container').innerHTML = contextHtml;
+                const plugins = [];
+                if (window.FullCalendar) {
+                    if (FullCalendar.timeGridPlugin) plugins.push(FullCalendar.timeGridPlugin);
+                    if (FullCalendar.listPlugin) plugins.push(FullCalendar.listPlugin);
+                    if (FullCalendar.interactionPlugin) plugins.push(FullCalendar.interactionPlugin);
+                    if (FullCalendar.multiMonthPlugin) plugins.push(FullCalendar.multiMonthPlugin);
+                    if (FullCalendar.premiumCommonPlugin) plugins.push(FullCalendar.premiumCommonPlugin);
+                    if (FullCalendar.scrollGridPlugin) plugins.push(FullCalendar.scrollGridPlugin);
+                    if (FullCalendar.adaptivePlugin) plugins.push(FullCalendar.adaptivePlugin);
+                }
+                const calendarEl = document.getElementById('calendar');
+                const calendar = new FullCalendar.Calendar(calendarEl, {
+                    schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives',
+                    themeSystem: 'bootstrap5',
+                    locale: 'pt-br',
+                    initialView: 'timeGridWeek',
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek,multiMonthYear'
+                    },
+                    views: {
+                        multiMonthYear: { type: 'multiMonth', duration: { years: 1 } }
+                    },
+                    plugins: plugins,
+                    selectable: true,
+                    editable: true,
+                    nowIndicator: true,
+                    navLinks: true,
+                    eventSources: [
+                        {
+                            url: '/events',
+                            method: 'GET',
+                            failure: () => { alert('Falha ao carregar eventos!'); }
+                        }
+                    ],
+                    select: function(info) {
+                        const popover = document.getElementById('eventPopover');
+                        popover.style.display = 'block';
+                        let x = 0, y = 0;
+                        if (info.jsEvent) {
+                            x = info.jsEvent.clientX;
+                            y = info.jsEvent.clientY;
+                        } else {
+                            const rect = calendarEl.getBoundingClientRect();
+                            x = rect.left + rect.width/2;
+                            y = rect.top + rect.height/2;
+                        }
+                        setTimeout(() => {
+                            const popRect = popover.getBoundingClientRect();
+                            const calRect = calendarEl.getBoundingClientRect();
+                            let left = x;
+                            let top = y + window.scrollY;
+                            if (left + popRect.width > calRect.right) left = calRect.right - popRect.width;
+                            if (left < calRect.left) left = calRect.left;
+                            if (top + popRect.height > calRect.bottom + window.scrollY) top = calRect.bottom + window.scrollY - popRect.height;
+                            if (top < calRect.top + window.scrollY) top = calRect.top + window.scrollY;
+                            popover.style.left = left + 'px';
+                            popover.style.top = top + 'px';
+                        }, 10);
+                        if (info.allDay) {
+                            document.getElementById('popoverEventTitle').value = '';
+                            document.getElementById('popoverEventStart').value = info.startStr;
+                            if (info.endStr) {
+                                const endDate = new Date(info.endStr);
+                                endDate.setDate(endDate.getDate() - 1);
+                                document.getElementById('popoverEventEnd').value = endDate.toISOString().slice(0,10);
+                            } else {
+                                document.getElementById('popoverEventEnd').value = '';
+                            }
+                        } else {
+                            document.getElementById('popoverEventTitle').value = '';
+                            document.getElementById('popoverEventStart').value = info.startStr.slice(0,16);
+                            document.getElementById('popoverEventEnd').value = info.endStr ? info.endStr.slice(0,16) : '';
+                        }
+                        document.getElementById('popoverEventDesc').value = '';
+                        setTimeout(() => {
+                            document.getElementById('popoverEventTitle').focus();
+                        }, 50);
+                        function closePopover() {
+                            popover.style.display = 'none';
+                            document.removeEventListener('mousedown', outsideClickListener);
+                        }
+                        function outsideClickListener(e) {
+                            if (!popover.contains(e.target)) closePopover();
+                        }
+                        setTimeout(() => {
+                            document.addEventListener('mousedown', outsideClickListener);
+                        }, 10);
+                        document.getElementById('closePopoverBtn').onclick = closePopover;
+                        const form = document.getElementById('eventPopoverForm');
+                        form.onsubmit = function(e) {
+                            e.preventDefault();
+                            const title = document.getElementById('popoverEventTitle').value;
+                            const start = document.getElementById('popoverEventStart').value;
+                            const end = document.getElementById('popoverEventEnd').value;
+                            if (title && start) {
+                                fetch('/add_event', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        title: title,
+                                        start: start,
+                                        end: end
+                                    })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.status === 'success') {
+                                        calendar.refetchEvents();
+                                        closePopover();
+                                    } else {
+                                        alert('Erro ao adicionar evento!');
+                                    }
+                                });
+                            }
+                        };
+                        calendar.unselect();
+                    },
+                    eventClick: function(info) {
+                        document.getElementById('eventContextMenu').style.display = 'none';
+                    },
+                    eventDidMount: function(info) {
+                        info.el.addEventListener('contextmenu', function(e) {
+                            e.preventDefault();
+                            const menu = document.getElementById('eventContextMenu');
+                            let x = e.clientX, y = e.clientY;
+                            menu.style.display = 'block';
+                            setTimeout(() => {
+                                const menuRect = menu.getBoundingClientRect();
+                                const calRect = calendarEl.getBoundingClientRect();
+                                let left = x;
+                                let top = y + window.scrollY;
+                                if (left + menuRect.width > calRect.right) left = calRect.right - menuRect.width;
+                                if (left < calRect.left) left = calRect.left;
+                                if (top + menuRect.height > calRect.bottom + window.scrollY) top = calRect.bottom + window.scrollY - menuRect.height;
+                                if (top < calRect.top + window.scrollY) top = calRect.top + window.scrollY;
+                                menu.style.left = left + 'px';
+                                menu.style.top = top + 'px';
+                            }, 10);
+                            function closeMenu() {
+                                menu.style.display = 'none';
+                                document.removeEventListener('mousedown', outsideClickListener);
+                            }
+                            function outsideClickListener(ev) {
+                                if (!menu.contains(ev.target)) closeMenu();
+                            }
+                            setTimeout(() => {
+                                document.addEventListener('mousedown', outsideClickListener);
+                            }, 10);
+                            document.getElementById('deleteEventBtn').onclick = function() {
+                                fetch('/delete_event', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ id: info.event.id })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.status === 'success') {
+                                        calendar.refetchEvents();
+                                        closeMenu();
+                                    } else {
+                                        alert('Erro ao deletar evento!');
+                                    }
+                                });
+                            };
+                            document.querySelectorAll('#colorOptions .color-circle').forEach(function(circle) {
+                                circle.onclick = function() {
+                                    const color = this.getAttribute('data-color');
+                                    fetch('/update_event_color', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ id: info.event.id, color: color })
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.status === 'success') {
+                                            calendar.refetchEvents();
+                                            closeMenu();
+                                        } else {
+                                            alert('Erro ao atualizar cor!');
+                                        }
+                                    });
+                                };
+                            });
+                        });
+                    },
+                    eventDrop: function(info) {
+                        // Atualização de evento no backend pode ser implementada aqui
+                    },
+                    eventResize: function(info) {
+                        // Atualização de evento no backend pode ser implementada aqui
+                    }
+                });
+                calendar.render();
+            });
+        });
+    </script>
+                                        fetch('/update_event_color', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ id: info.event.id, color: color })
+                                        })
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            if (data.status === 'success') {
+                                                calendar.refetchEvents();
+                                                closeMenu();
+                                            } else {
+                                                alert('Erro ao atualizar cor!');
+                                            }
+                                        });
+                                    };
+                                });
+                            });
+                        eventDrop: function(info) {
+                            // Aqui pode-se implementar atualização de evento no backend
+                        eventResize: function(info) {
+                            // Aqui pode-se implementar atualização de evento no backend
+                        }
+                    });
+                    calendar.render();
+                });
+        });
+    </script>
+    </body>
+</html>
+                                end: info.endStr
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+
+</body>
+</html>

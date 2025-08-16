@@ -1,0 +1,25 @@
+<!-- Popover para detalhes do evento (simplificado) -->
+<div id="eventDetailPopover" class="popover bs-popover-auto show visually-hidden position-absolute min-vw-25" tabindex="-1">
+    <div class="popover-arrow"></div>
+    <div class="popover-header">
+        Detalhes do Evento
+        <button type="button" class="btn-close float-end" aria-label="Fechar" id="closeDetailPopoverBtn"></button>
+    </div>
+    <div class="popover-body">
+        <div id="detailEventTitle" class="fw-bold"></div>
+        <div id="detailEventTime" class="text-muted small"></div>
+        <div id="detailEventPhoneSection" class="mt-2 hidden">
+            <div id="detailEventPhone" class="small text-primary click-to-copy" title="Clique para copiar">
+                <!-- telefone será preenchido dinamicamente; clique para copiar -->
+            </div>
+        </div>
+        <div class="mt-3">
+            <label for="detailEventNotes" class="form-label small text-muted">Descrição</label>
+            <textarea id="detailEventNotes" class="form-control form-control-sm" rows="3" placeholder="Adicionar descrição..."></textarea>
+            <div class="d-flex justify-content-end mt-2">
+                <button id="saveDetailNotesBtn" type="button" class="btn btn-sm btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+    <!-- Campos removidos: telefone, cor, id, labels -->
+</div>

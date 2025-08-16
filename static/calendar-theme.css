@@ -1,0 +1,165 @@
+/* Modern Bootstrap 5-inspired theme for FullCalendar */
+body {
+    background: #f8f9fa;
+}
+
+#calendar {
+    max-width: 1200px;
+    margin: 40px auto;
+}
+
+.fc-toolbar-title {
+    font-size: 1.5rem;
+}
+
+.fc-daygrid-day.fc-day-today {
+    background: #fff3cd;
+    /* bootstrap warning-ish highlight like demo */
+}
+
+.fc-event {
+    border-radius: .25rem;
+    padding: 1px 4px;
+}
+
+.fc-list-event {
+    border-left-width: .25rem;
+}
+
+.fc-scrollgrid {
+    border-radius: .25rem;
+    overflow: hidden;
+}
+
+/* Settings menu */
+#settingsMenu {
+    min-width: 220px;
+    z-index: 3000;
+}
+
+#settingsMenu .btn.active {
+    border-color: #2563eb;
+    background: #e0e7ff;
+    color: #0f172a;
+}
+
+/* Color circle for context menu */
+.color-circle {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px #0002;
+    cursor: pointer;
+    transition: outline 0.2s, box-shadow 0.2s;
+}
+
+.color-circle:hover,
+.color-circle.selected {
+    outline: 2px solid #2563eb;
+    box-shadow: 0 0 0 2px #2563eb33;
+}
+
+/* Fix para datalist dentro de popover com position absolute */
+.popover {
+    position: fixed !important;
+}
+
+.popover input[list] {
+    position: relative;
+    z-index: 1;
+}
+
+/* Estilos para o popup de detalhes */
+.hidden {
+    display: none;
+}
+
+.event-color-preview {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+
+/* Clique para copiar (telefone) */
+.click-to-copy {
+    cursor: pointer;
+}
+
+.click-to-copy.copied::after {
+    content: ' Copiado!';
+    color: #16a34a;
+    margin-left: 6px;
+    font-weight: 600;
+}
+
+/* Ensure event text fits within short slots (e.g., 30-min) */
+.fc-timegrid-event .fc-event-main,
+.fc-timegrid-event .fc-event-main-frame {
+    overflow: hidden;
+}
+
+.fc-timegrid-event .fc-event-main-custom {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9em;
+}
+
+.fc-timegrid-event .fc-event-main-custom.two-line {
+    white-space: normal;
+    /* permite quebra em duas linhas controladas */
+}
+
+.fc-timegrid-event .fc-event-main-custom.two-line .fc-event-title {
+    display: block;
+}
+
+.fc-timegrid-event .fc-event-main-custom.two-line .fc-event-time-start {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fc-timegrid-event .fc-event-title {
+    font-weight: 700;
+}
+
+.fc-timegrid-event .fc-event-time-start {
+    font-weight: 400;
+    /* normal */
+}
+
+/* Day view: scale font for longer events */
+.fc-timegrid-day .fc-timegrid-event .fc-event-main-custom.size-medium {
+    font-size: 1.05em;
+}
+
+.fc-timegrid-day .fc-timegrid-event .fc-event-main-custom.size-large {
+    font-size: 1.15em;
+}
+
+/* Month (dayGrid) compact one-liners: title bold, time normal */
+.fc-daygrid-event .fc-event-main,
+.fc-daygrid-event .fc-event-main-frame {
+    overflow: hidden;
+}
+
+.fc-daygrid-event .fc-month-line {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fc-daygrid-event .fc-event-title {
+    font-weight: 700;
+}
+
+.fc-daygrid-event .fc-event-time-start {
+    font-weight: 400;
+}
