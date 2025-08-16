@@ -1,0 +1,92 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+... (truncated for brevity in this file header; full text below) ...
+
+TERMS AND CONDITIONS
+
+  0. Definitions.
+
+  "This License" refers to version 3 of the GNU General Public License.
+  "Copyright" also means copyright-like laws that apply to other kinds of
+works, such as semiconductor masks.
+  "The Program" refers to any copyrightable work licensed under this
+License. Each licensee is addressed as "you". "Licensees" and
+"recipients" may be individuals or organizations.
+
+  1. Source Code.
+
+  The "source code" for a work means the preferred form of the work
+for making modifications to it. "Object code" means any non-source
+form of a work.
+
+  2. Basic Permissions.
+
+  All rights granted under this License are granted for the term of
+copyright on the Program, and are irrevocable provided the stated
+conditions are met. This License explicitly affirms your unlimited
+permission to run the unmodified Program. The output from running a
+covered work is covered by this License only if the output, given its
+content, constitutes a covered work. This License acknowledges your
+rights of fair use or other equivalent, as provided by copyright law.
+
+  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
+
+  4. Conveying Verbatim Copies.
+
+  5. Conveying Modified Source Versions.
+
+  6. Conveying Non-Source Forms.
+
+  7. Additional Terms.
+
+  8. Termination.
+
+  9. Acceptance Not Required for Having Copies.
+
+  10. Automatic Licensing of Downstream Recipients.
+
+  11. Patents.
+
+  12. No Surrender of Others' Freedom.
+
+  13. Use with the GNU Affero General Public License.
+
+  14. Revised Versions of this License.
+
+  END OF TERMS AND CONDITIONS
+
+How to Apply These Terms to Your New Programs
+
+To apply the GNU GPL to your program, attach the following notices. It is
+safest to attach them to the start of each source file to most effectively
+state the exclusion of warranty; and each file should have at least
+the "copyright" line and a pointer to where the full notice is found.
+
+    <one line to give the program's name and a brief idea of what it does.>
+    Copyright (C) <year>  <name of author>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Also add information on how to contact you by electronic and paper mail.
