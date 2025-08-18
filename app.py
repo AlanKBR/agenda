@@ -192,12 +192,35 @@ def normalize_for_storage(dt: datetime, is_date_only: bool) -> str:
     """
     if not dt:
         return ""
-    return dt.strftime("%Y-%m-%d") if is_date_only else dt.strftime("%Y-%m-%dT%H:%M:%S")
+    return (
+        dt.strftime("%Y-%m-%d")
+        if is_date_only
+        else dt.strftime("%Y-%m-%dT%H:%M:%S")
+    )
 
 
 @app.route("/events")
 def get_events():
-    events = CalendarEvent.query.all()
+    # Optional range filtering from FullCalendar: start/end (ISO).
+    # End is exclusive.
+    range_start = (request.args.get("start") or "").strip()
+    range_end = (request.args.get("end") or "").strip()
+    q = CalendarEvent.query
+    # When both start and end present, restrict to events that
+    # intersect the range: event.end >= start AND event.start < end
+    if range_start and range_end:
+        try:
+            # basic sanity check on formats
+            # accept YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS]
+            if len(range_start) >= 10 and len(range_end) >= 10:
+                col_end = getattr(CalendarEvent, "end")
+                col_start = getattr(CalendarEvent, "start")
+                q = q.filter(col_end >= range_start)
+                q = q.filter(col_start < range_end)
+        except Exception:
+            # fallback to full list if parsing fails
+            pass
+    events = q.all()
     return jsonify([event.to_dict() for event in events])
 
 
@@ -292,9 +315,10 @@ def update_event():
             start_is_date_only = bool(start_is_date_only)
             end_is_date_only = bool(end_is_date_only)
             event.start = normalize_for_storage(start_dt, start_is_date_only)
-            event.end = (
-                normalize_for_storage(end_dt, end_is_date_only) if end_dt else None
-            )
+            if end_dt:
+                event.end = normalize_for_storage(end_dt, end_is_date_only)
+            else:
+                event.end = None
         db.session.commit()
         return jsonify({"status": "success"})
     else:
@@ -391,7 +415,10 @@ def buscar_telefone():
 
         # Buscar primeiro por nome exato
         cursor.execute(
-            ("SELECT celular FROM pacientes " "WHERE LOWER(nome) = LOWER(?) LIMIT 1"),
+            (
+                "SELECT celular FROM pacientes "
+                "WHERE LOWER(nome) = LOWER(?) LIMIT 1"
+            ),
             (nome,),
         )
         result = cursor.fetchone()
@@ -573,7 +600,27 @@ def holidays_in_range():
     except Exception:
         return jsonify([])
     # SQLite string compare works for ISO dates
-    rows = Holiday.query.filter(Holiday.date >= start).filter(Holiday.date <= end).all()
+    rows = (
+        Holiday.query.filter(Holiday.date >= start)
+        .filter(Holiday.date <= end)
+        .all()
+    )
+    return jsonify([h.to_dict() for h in rows])
+
+
+@app.route("/holidays/year")
+def holidays_by_year():
+    """Return all holidays for a given year.
+    Query param: year=YYYY
+    """
+    year_raw = (request.args.get("year") or "").strip()
+    try:
+        year = int(year_raw)
+    except Exception:
+        year = 0
+    if year <= 0:
+        return jsonify([])
+    rows = Holiday.query.filter(Holiday.year == year).all()
     return jsonify([h.to_dict() for h in rows])
 
 

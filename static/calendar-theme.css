@@ -71,6 +71,42 @@ body {
     z-index: 1;
 }
 
+/* Expand FullCalendar's "+ N more" popover for year/month views */
+.fc-more-popover {
+    width: 420px !important;
+    max-width: 90vw;
+}
+
+.fc-more-popover .fc-popover-body {
+    max-height: 60vh;
+    overflow: auto;
+}
+
+/* Ensure event detail popover is above day/year popover */
+#eventDetailPopover {
+    z-index: 10000 !important;
+}
+
+/* Rich lines inside the popover */
+.fc-popover-rich .line1 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fc-popover-rich .fc-event-title {
+    font-weight: 700;
+}
+
+.fc-popover-rich .fc-event-time-start {
+    font-weight: 400;
+}
+
+.fc-popover-rich .fc-event-notes {
+    margin-top: 2px;
+    white-space: normal;
+}
+
 /* Estilos para o popup de detalhes */
 .hidden {
     display: none;

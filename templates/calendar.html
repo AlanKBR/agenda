@@ -148,10 +148,13 @@
                     } catch (e) {}
                 }
 
-                // Client-side holiday cache for visible range
-                let holidayDates = new Set(); // strings 'YYYY-MM-DD'
-                let holidayMeta = {}; // date -> { name, type, level }
+                // Client-side holiday cache
+                let holidayDates = new Set(); // visible set 'YYYY-MM-DD'
+                let holidayMeta = {}; // visible map date -> meta
                 const dayCellEls = {}; // date -> [elements]
+                // Session in-memory cache by year to avoid repeated GETs
+                const holidaysYearCache = {}; // { [year]: { dates:Set, meta:{[date]:meta} } }
+                const holidaysYearPending = {}; // { [year]: Promise }
 
                 function toLocalISO(date) {
                     const pad = (n) => String(n).padStart(2, '0');
@@ -179,6 +182,67 @@
                                 }
                             }
                         });
+                    });
+                }
+
+                function ymdFromDate(d) {
+                    const pad = n => String(n).padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                }
+                function yearsInRangeInclusive(startDate, endDateInclusive) {
+                    const ys = [];
+                    const y1 = startDate.getFullYear();
+                    const y2 = endDateInclusive.getFullYear();
+                    for (let y = y1; y <= y2; y++) ys.push(y);
+                    return ys;
+                }
+                function ensureYearCached(year) {
+                    if (holidaysYearCache[year]) return Promise.resolve();
+                    if (holidaysYearPending[year]) return holidaysYearPending[year];
+                    const p = fetch(`/holidays/year?year=${year}`)
+                        .then(r => r.json())
+                        .then(list => {
+                            const dates = new Set(list.map(h => h.date));
+                            const meta = {};
+                            list.forEach(h => { meta[h.date] = { name: h.name, type: h.type, level: h.level }; });
+                            holidaysYearCache[year] = { dates, meta };
+                        })
+                        .catch(() => { /* swallow; leave uncached to retry later */ })
+                        .finally(() => { delete holidaysYearPending[year]; });
+                    holidaysYearPending[year] = p;
+                    return p;
+                }
+                function ensureRangeCached(startDate, endDateInclusive) {
+                    const years = yearsInRangeInclusive(startDate, endDateInclusive);
+                    return Promise.all(years.map(y => ensureYearCached(y)));
+                }
+                function buildVisibleFromCache(startDate, endDateInclusive) {
+                    const resDates = new Set();
+                    const resMeta = {};
+                    let d = new Date(startDate);
+                    while (d <= endDateInclusive) {
+                        const y = d.getFullYear();
+                        const yc = holidaysYearCache[y];
+                        const key = ymdFromDate(d);
+                        if (yc && yc.dates.has(key)) {
+                            resDates.add(key);
+                            if (yc.meta[key]) resMeta[key] = yc.meta[key];
+                        }
+                        d.setDate(d.getDate() + 1);
+                    }
+                    return { dates: resDates, meta: resMeta };
+                }
+                function updateHolidaysForCurrentView() {
+                    const view = calendar.view;
+                    if (!(view && view.currentStart && view.currentEnd)) return;
+                    const start = new Date(view.currentStart);
+                    const endInc = new Date(view.currentEnd);
+                    endInc.setDate(endInc.getDate() - 1); // end is exclusive
+                    return ensureRangeCached(start, endInc).then(() => {
+                        const built = buildVisibleFromCache(start, endInc);
+                        holidayDates = built.dates;
+                        holidayMeta = built.meta;
+                        syncHolidayHighlight();
                     });
                 }
 
@@ -226,7 +290,7 @@
                             }
                         },
                         settings: {
-                            text: 'Config',
+                            text: 'Configurações',
                             click: function(ev) {
                                 const btn = calendarEl.querySelector('.fc-settings-button');
                                 if (!btn) return;
@@ -239,14 +303,32 @@
                         center: 'title',
                         right: 'prevYear,nextYear dayGridMonth,timeGridWeek,timeGridDay,listWeek,multiMonthYear'
                     },
+                    buttonText: {
+                        today: 'Hoje',
+                        month: 'Mês',
+                        week: 'Semana',
+                        day: 'Dia',
+                        list: 'Lista',
+                        listWeek: 'Lista',
+                        dayGridMonth: 'Mês',
+                        timeGridWeek: 'Semana',
+                        timeGridDay: 'Dia',
+                        multiMonthYear: 'Ano'
+                    },
+                    moreLinkText: function(n) { return `+${n} mais`; },
                     views: {
+                        dayGridMonth: {
+                            eventDisplay: 'block'
+                        },
                         multiMonthYear: {
                             type: 'multiMonth',
                             duration: {
                                 years: 1
                             },
                             // boas colunas para layout 12 meses (3 col x 4 linhas)
-                            multiMonthMaxColumns: 3
+                            multiMonthMaxColumns: 3,
+                            eventDisplay: 'block',
+                            buttonText: 'Ano'
                         }
                     },
                     plugins: plugins,
@@ -348,7 +430,7 @@
                                 html
                             };
                         }
-                        // Mês: título primeiro e horário em seguida numa única linha
+                        // Mês: título primeiro e horário em seguida numa única linha (mantém fundo colorido padrão)
                         if (arg.view.type === 'dayGridMonth') {
                             const isAllDay = arg.event.allDay;
                             let timeStr = '';
@@ -367,16 +449,32 @@
                                 }
                             }
                             const title = arg.event.title || '';
-                            const evColor = (
-                                arg.event.backgroundColor ||
-                                arg.event.borderColor || ''
-                            );
-                            const titleStyle = (!isAllDay && evColor) ? ` style=\"color:${evColor}\"` : '';
                             const timeInline = timeStr ? `<span class=\"fc-event-time-start\"> ${timeStr}</span>` : '';
-                            const html = `<div class=\"fc-event-main-custom fc-month-line\"><span class=\"fc-event-title\"${titleStyle}>${title}</span>${timeInline}</div>`;
+                            const html = `<div class=\"fc-event-main-custom fc-month-line\"><span class=\"fc-event-title\">${title}</span>${timeInline}</div>`;
                             return {
                                 html
                             };
+                        }
+                        // Visualização Anual (multiMonth): mesmo layout do mês
+                        if (arg.view.type && arg.view.type.startsWith('multiMonth')) {
+                            const isAllDay = arg.event.allDay;
+                            let timeStr = '';
+                            if (!isAllDay && arg.event.start) {
+                                try {
+                                    timeStr = new Intl.DateTimeFormat('pt-BR', {
+                                        hour: '2-digit', minute: '2-digit', hour12: false
+                                    }).format(arg.event.start);
+                                } catch (e) {
+                                    const d = arg.event.start;
+                                    const hh = String(d.getHours()).padStart(2, '0');
+                                    const mm = String(d.getMinutes()).padStart(2, '0');
+                                    timeStr = `${hh}:${mm}`;
+                                }
+                            }
+                            const title = arg.event.title || '';
+                            const timeInline = timeStr ? `<span class=\"fc-event-time-start\"> ${timeStr}</span>` : '';
+                            const html = `<div class=\"fc-event-main-custom fc-month-line\"><span class=\"fc-event-title\">${title}</span>${timeInline}</div>`;
+                            return { html };
                         }
                         // Outras visões: padrão
                         return undefined;
@@ -392,6 +490,8 @@
                         const popover = document.getElementById('eventPopover');
                         popover.style.display = 'block';
                         popover.classList.remove('visually-hidden');
+                        // garantir que fica acima do popover do dia/ano
+                        try { popover.style.zIndex = '4000'; } catch (e) {}
                         let x = 0,
                             y = 0;
                         if (info.jsEvent) {
@@ -594,6 +694,12 @@
                     eventClick: function(info) {
                         document.getElementById('eventContextMenu').style.display = 'none';
                         const popover = document.getElementById('eventDetailPopover');
+                        // mover para o body para evitar contextos de empilhamento e garantir topo
+                        try {
+                            if (popover && popover.parentElement !== document.body) {
+                                document.body.appendChild(popover);
+                            }
+                        } catch (e) {}
                         // Formatação correta do horário (pt-BR)
                         const fmtDate = new Intl.DateTimeFormat('pt-BR', {
                             day: '2-digit',
@@ -743,6 +849,7 @@
                         }
                         popover.style.display = 'block';
                         popover.classList.remove('visually-hidden');
+                        try { popover.style.zIndex = '10000'; } catch (e) {}
                         setTimeout(() => {
                             const popRect = popover.getBoundingClientRect();
                             const calRect = calendarEl.getBoundingClientRect();
@@ -846,6 +953,39 @@
                                 };
                             });
                         });
+
+                        // Enriquecer eventos no popover "+ mais" (multiMonth/dayGrid): título, horário e descrição
+                        // Executa após render para garantir que o elemento esteja dentro do popover
+                        setTimeout(() => {
+                            const pop = info.el.closest('.fc-more-popover');
+                            if (!pop) return; // apenas dentro do popover
+                            try {
+                                const isAllDay = info.event.allDay;
+                                let timeStr = '';
+                                if (!isAllDay && info.event.start) {
+                                    try {
+                                        timeStr = new Intl.DateTimeFormat('pt-BR', {
+                                            hour: '2-digit', minute: '2-digit', hour12: false
+                                        }).format(info.event.start);
+                                    } catch (e) {
+                                        const d = info.event.start;
+                                        const hh = String(d.getHours()).padStart(2, '0');
+                                        const mm = String(d.getMinutes()).padStart(2, '0');
+                                        timeStr = `${hh}:${mm}`;
+                                    }
+                                }
+                                const title = info.event.title || '';
+                                const notes = (info.event.extendedProps && info.event.extendedProps.notes) ? info.event.extendedProps.notes : '';
+                                const sep = timeStr ? '<span class="fc-event-time-start"> ' + timeStr + '</span>' : '';
+                                const notesLine = notes ? `<div class="fc-event-notes">${notes}</div>` : '';
+                                const html = `<div class="fc-event-main-custom fc-popover-rich">
+                                    <div class="line1"><span class="fc-event-title">${title}</span>${sep}</div>
+                                    ${notesLine}
+                                </div>`;
+                                const main = info.el.querySelector('.fc-event-main') || info.el.querySelector('.fc-event-main-frame') || info.el;
+                                if (main) main.innerHTML = html;
+                            } catch (e) { /* noop */ }
+                        }, 0);
                     },
                     eventDrop: function(info) {
                         let start = info.event.startStr;
@@ -931,6 +1071,8 @@
                     settingsMenu.style.position = 'absolute';
                     settingsMenu.style.top = top + 'px';
                     settingsMenu.style.left = left + 'px';
+                    // Inicializar UI de feriados somente ao abrir o menu (lazy)
+                    try { if (typeof initHolidaysUIOnce === 'function') initHolidaysUIOnce(); } catch (e) {}
                     setActiveThemeButton(localStorage.getItem('calendarTheme') || 'default');
                     (function() {
                         let saved = parseInt(localStorage.getItem('defaultEventDurationMin') || '60', 10);
@@ -949,6 +1091,8 @@
                             btn.classList.toggle('active', String(wk) === btn.getAttribute('data-weekends'));
                         });
                     })();
+                    // Atualizar status do token somente agora
+                    try { if (window.__fetchAndUpdateTokenBadge) window.__fetchAndUpdateTokenBadge(); } catch (e) {}
                     setTimeout(() => document.addEventListener('mousedown', outsideClickListenerSettings), 10);
                 }
 
@@ -1025,53 +1169,15 @@
                 calendar.on('datesSet', function() {
                     const val = getWeekendsSetting();
                     calendar.setOption('weekends', val);
-                    // fetch holidays for range
-                    const view = calendar.view;
-                    if (view && view.currentStart && view.currentEnd) {
-                        const start = toLocalISO(view.currentStart);
-                        const endDate = new Date(view.currentEnd);
-                        endDate.setDate(endDate.getDate() - 1); // currentEnd é exclusivo
-                        const end = toLocalISO(endDate);
-                        fetch(`/holidays/range?start=${start}&end=${end}`)
-                            .then(r => r.json())
-                            .then(list => {
-                                holidayDates = new Set(list.map(h => h.date));
-                                holidayMeta = {};
-                                list.forEach(h => holidayMeta[h.date] = {
-                                    name: h.name,
-                                    type: h.type,
-                                    level: h.level
-                                });
-                                syncHolidayHighlight();
-                            })
-                            .catch(() => {});
-                    }
+                    updateHolidaysForCurrentView();
                 });
                 // prime holidays on initial render
-                setTimeout(() => {
-                    const view = calendar.view;
-                    if (view && view.currentStart && view.currentEnd) {
-                        const start = toLocalISO(view.currentStart);
-                        const endDate = new Date(view.currentEnd);
-                        endDate.setDate(endDate.getDate() - 1);
-                        const end = toLocalISO(endDate);
-                        fetch(`/holidays/range?start=${start}&end=${end}`)
-                            .then(r => r.json())
-                            .then(list => {
-                                holidayDates = new Set(list.map(h => h.date));
-                                holidayMeta = {};
-                                list.forEach(h => holidayMeta[h.date] = {
-                                    name: h.name,
-                                    type: h.type,
-                                    level: h.level
-                                });
-                                syncHolidayHighlight();
-                            })
-                            .catch(() => {});
-                    }
-                }, 50);
-                // ==== Invertexto token and refresh ====
-                (function configureHolidaysUI() {
+                setTimeout(() => { updateHolidaysForCurrentView(); }, 50);
+                // ==== Invertexto token and refresh (lazy init) ====
+                let __holidaysUIInitialized = false;
+                function initHolidaysUIOnce() {
+                    if (__holidaysUIInitialized) return;
+                    __holidaysUIInitialized = true;
                     const tokenInput = document.getElementById('invertextoToken');
                     const yearInput = document.getElementById('holidaysYear');
                     const ufInput = document.getElementById('holidaysState');
@@ -1090,11 +1196,18 @@
                         tokenBadge.textContent = has ? 'Token configurado' : 'Token não configurado';
                         tokenBadge.className = has ? 'badge bg-success' : 'badge bg-secondary';
                     }
-                    fetch('/settings/invertexto_token').then(r => r.json()).then(j => {
-                        const has = !!(j && j.hasToken);
-                        if (!has) statusEl.textContent = 'Token não configurado.';
-                        updateTokenBadge(has);
-                    }).catch(() => {});
+                    function fetchAndUpdateTokenBadge() {
+                        return fetch('/settings/invertexto_token')
+                            .then(r => r.json())
+                            .then(j => {
+                                const has = !!(j && j.hasToken);
+                                if (!has) statusEl.textContent = 'Token não configurado.';
+                                updateTokenBadge(has);
+                            })
+                            .catch(() => {});
+                    }
+                    // Expor para chamada quando abrir o menu
+                    window.__fetchAndUpdateTokenBadge = fetchAndUpdateTokenBadge;
                     // Save token on blur
                     function saveToken(value) {
                         const v = (value || '').trim();
@@ -1141,8 +1254,6 @@
                     }
                     tokenInput.addEventListener('change', () => {
                         saveToken(tokenInput.value);
-                        const v = (tokenInput.value || '').trim();
-                        if (!v) return;
                     });
                     // Refresh action
                     btn.addEventListener('click', () => {
@@ -1166,26 +1277,10 @@
                         }).then(r => r.json()).then(j => {
                             if (j && j.status === 'success') {
                                 statusEl.textContent = `Atualizado. ${j.count||0} registros.`;
-                                // Refetch holidays for current view
-                                const view = calendar.view;
-                                if (view && view.currentStart && view.currentEnd) {
-                                    const start = toLocalISO(view.currentStart);
-                                    const endDate = new Date(view.currentEnd);
-                                    endDate.setDate(endDate.getDate() - 1);
-                                    const end = toLocalISO(endDate);
-                                    fetch(`/holidays/range?start=${start}&end=${end}`)
-                                        .then(r => r.json())
-                                        .then(list => {
-                                            holidayDates = new Set(list.map(h => h.date));
-                                            holidayMeta = {};
-                                            list.forEach(h => holidayMeta[h.date] = {
-                                                name: h.name,
-                                                type: h.type,
-                                                level: h.level
-                                            });
-                                            syncHolidayHighlight();
-                                        });
-                                }
+                                // Invalidate year cache and rebuild for current view
+                                for (const y in holidaysYearCache) delete holidaysYearCache[y];
+                                for (const y in holidaysYearPending) delete holidaysYearPending[y];
+                                try { updateHolidaysForCurrentView(); } catch (e) {}
                             } else {
                                 const msg = (j && j.message) ? j.message : 'Falha ao atualizar.';
                                 statusEl.textContent = msg + (msg.includes('Não autorizado') ? ' Verifique o token e tente novamente.' : '');
@@ -1199,7 +1294,7 @@
                             doRefresh();
                         }
                     });
-                })();
+                }
 
                 // Função para configurar autocompletar nativo
                 function setupAutocomplete() {
