@@ -2,7 +2,7 @@
 line-length = 79
 target-version = ["py312"]
 include = ".*\\.py$"
-extend-exclude = "(venv|node_modules|__pycache__)"
+extend-exclude = "(venv|node_modules|__pycache__|migration_example)"
 
 [tool.ruff]
 target-version = "py312"
@@ -10,7 +10,8 @@ line-length = 79
 extend-exclude = [
     "venv",
     "node_modules",
-    "__pycache__"
+    "__pycache__",
+    "migration_example",
 ]
 
 [tool.ruff.lint]

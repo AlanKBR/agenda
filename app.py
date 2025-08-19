@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, or_, text
 
 try:
     import requests  # type: ignore
@@ -31,13 +31,24 @@ class CalendarEvent(db.Model):
     end = db.Column(db.String(30), nullable=False)
     color = db.Column(db.String(20), nullable=True)
     notes = db.Column(db.String(500), nullable=True)
+    # Novo: vínculo opcional ao dentista (users.id em instance/users.db)
+    profissional_id = db.Column(db.Integer, nullable=True)
 
-    def __init__(self, title, start, end, color=None, notes=None):
+    def __init__(
+        self,
+        title,
+        start,
+        end,
+        color=None,
+        notes=None,
+        profissional_id=None,
+    ):
         self.title = title
         self.start = start
         self.end = end
         self.color = color
         self.notes = notes
+        self.profissional_id = profissional_id
 
     def to_dict(self):
         from dateutil.parser import parse
@@ -69,6 +80,8 @@ class CalendarEvent(db.Model):
             "color": self.color,
             "notes": self.notes,
             "allDay": all_day,
+            # Para filtragem no cliente
+            "profissional_id": self.profissional_id,
         }
 
 
@@ -199,6 +212,70 @@ def normalize_for_storage(dt: datetime, is_date_only: bool) -> str:
     )
 
 
+def _color_hexes_for_query(query_text: str) -> list[str]:
+    q = (query_text or "").strip().lower()
+    if not q:
+        return []
+    # Mapeamento de palavras -> hex (paleta do menu de cores)
+    COLOR_WORDS: dict[str, list[str]] = {
+        "vermelho": ["#e11d48"],
+        "rosa": ["#f43f5e", "#f472b6"],
+        "rosa-claro": ["#f472b6"],
+        "laranja": ["#f59e42"],
+        "amarelo": ["#fbbf24"],
+        "verde": ["#22c55e"],
+        "verde-agua": ["#10b981"],
+        "verde agua": ["#10b981"],
+        "azul": ["#2563eb"],
+        "azul-escuro": ["#2563eb"],
+        "azul escuro": ["#2563eb"],
+        "azul-claro": ["#0ea5e9"],
+        "azul claro": ["#0ea5e9"],
+        "roxo": ["#6366f1"],
+        "lilás": ["#6366f1"],
+        "lilas": ["#6366f1"],
+        "roxo-escuro": ["#a21caf"],
+        "roxo escuro": ["#a21caf"],
+        "púrpura": ["#a21caf"],
+        "purpura": ["#a21caf"],
+        "cinza": ["#64748b"],
+        "grey": ["#64748b"],
+        "grafite": ["#64748b"],
+    }
+    hexes: list[str] = []
+    for word, values in COLOR_WORDS.items():
+        if q == word or word in q:
+            hexes.extend(values)
+    # aceitar busca por hex direto (#rrggbb)
+    if q.startswith("#") and len(q) in (4, 7):
+        hexes.append(q)
+    # normalizar únicos
+    seen = set()
+    uniq = []
+    for h in hexes:
+        if h not in seen:
+            seen.add(h)
+            uniq.append(h)
+    return uniq
+
+
+def _apply_query_filters(base_query, query_text: str):
+    qtxt = (query_text or "").strip().lower()
+    if not qtxt:
+        return base_query
+    like = f"%{qtxt}%"
+    col_title = getattr(CalendarEvent, "title")
+    col_notes = getattr(CalendarEvent, "notes")
+    title_match = col_title.ilike(like)
+    notes_match = col_notes.ilike(like)
+    color_hexes = _color_hexes_for_query(qtxt)
+    if color_hexes:
+        col_color = getattr(CalendarEvent, "color")
+        color_match = col_color.in_(color_hexes)
+        return base_query.filter(or_(title_match, notes_match, color_match))
+    return base_query.filter(or_(title_match, notes_match))
+
+
 @app.route("/events")
 def get_events():
     # Optional range filtering from FullCalendar: start/end (ISO).
@@ -206,9 +283,39 @@ def get_events():
     range_start = (request.args.get("start") or "").strip()
     range_end = (request.args.get("end") or "").strip()
     q = CalendarEvent.query
+    # Server-side search (title, notes, color by word)
+    query_text = (request.args.get("q") or "").strip()
+    # Filtrar por dentistas selecionados (CSV de ids inteiros)
+    dentists_param = (request.args.get("dentists") or "").strip()
+    include_unassigned = (
+        request.args.get("include_unassigned") or ""
+    ).strip() in ("1", "true", "True")
+    if dentists_param:
+        try:
+            ids = [
+                int(x)
+                for x in dentists_param.split(",")
+                if x.strip().isdigit()
+            ]
+            col_prof = getattr(CalendarEvent, "profissional_id")
+            if ids and include_unassigned:
+                q = q.filter(or_(col_prof.in_(ids), col_prof.is_(None)))
+            elif ids:
+                q = q.filter(col_prof.in_(ids))
+            elif include_unassigned:
+                q = q.filter(col_prof.is_(None))
+        except Exception:
+            pass
+    elif include_unassigned:
+        try:
+            col_prof = getattr(CalendarEvent, "profissional_id")
+            q = q.filter(col_prof.is_(None))
+        except Exception:
+            pass
     # When both start and end present, restrict to events that
     # intersect the range: event.end >= start AND event.start < end
-    if range_start and range_end:
+    # Se houver busca (q), ignore range para retornar todos os resultados
+    if range_start and range_end and not query_text:
         try:
             # basic sanity check on formats
             # accept YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS]
@@ -220,8 +327,93 @@ def get_events():
         except Exception:
             # fallback to full list if parsing fails
             pass
-    events = q.all()
-    return jsonify([event.to_dict() for event in events])
+    # Aplicar busca por título/notas/cor
+    if query_text:
+        q = _apply_query_filters(q, query_text)
+    try:
+        events = q.all()
+        return jsonify([event.to_dict() for event in events])
+    except Exception as e:
+        # Fallback: se a coluna 'profissional_id' não existe,
+        # refazer sem filtro
+        msg = str(e).lower()
+        if "no such column" in msg and "profissional_id" in msg:
+            try:
+                q2 = CalendarEvent.query
+                # manter apenas o filtro de data, se houver
+                if range_start and range_end:
+                    try:
+                        if len(range_start) >= 10 and len(range_end) >= 10:
+                            col_end = getattr(CalendarEvent, "end")
+                            col_start = getattr(CalendarEvent, "start")
+                            q2 = q2.filter(col_end >= range_start)
+                            q2 = q2.filter(col_start < range_end)
+                    except Exception:
+                        pass
+                events = q2.all()
+                return jsonify([event.to_dict() for event in events])
+            except Exception:
+                return jsonify([])
+        # Outro erro inesperado
+        return jsonify([])
+
+
+@app.route("/events/search_range")
+def events_search_range():
+    """Retorna o intervalo e a contagem dos eventos que casam a busca e
+    filtros atuais, ignorando o range da visão.
+    Params: q, dentists, include_unassigned.
+    """
+    q = CalendarEvent.query
+    # filtros de dentista
+    dentists_param = (request.args.get("dentists") or "").strip()
+    include_unassigned = (
+        request.args.get("include_unassigned") or ""
+    ).strip() in ("1", "true", "True")
+    if dentists_param:
+        try:
+            ids = [
+                int(x)
+                for x in dentists_param.split(",")
+                if x.strip().isdigit()
+            ]
+            col_prof = getattr(CalendarEvent, "profissional_id")
+            if ids and include_unassigned:
+                q = q.filter(or_(col_prof.in_(ids), col_prof.is_(None)))
+            elif ids:
+                q = q.filter(col_prof.in_(ids))
+            elif include_unassigned:
+                q = q.filter(col_prof.is_(None))
+        except Exception:
+            pass
+    elif include_unassigned:
+        try:
+            col_prof = getattr(CalendarEvent, "profissional_id")
+            q = q.filter(col_prof.is_(None))
+        except Exception:
+            pass
+    # aplicar q
+    query_text = (request.args.get("q") or "").strip()
+    if query_text:
+        q = _apply_query_filters(q, query_text)
+    try:
+        events = q.all()
+        if not events:
+            return jsonify({"min": None, "max": None, "count": 0})
+        # Como usamos formato ISO no armazenamento, comparação lexical funciona
+        starts = [e.start for e in events if e.start]
+        ends = [e.end for e in events if e.end]
+        min_start = min(starts) if starts else None
+        max_end = max(ends) if ends else None
+        return jsonify(
+            {
+                "min": min_start,
+                "max": max_end,
+                "count": len(events),
+            }
+        )
+    except Exception:
+        return jsonify({"min": None, "max": None, "count": 0})
 
 
 @app.route("/add_event", methods=["POST"])
@@ -265,6 +457,11 @@ def add_event():
         end=new_end,
         color=data.get("color"),
         notes=data.get("notes"),
+        profissional_id=(
+            int(data.get("profissional_id"))
+            if str(data.get("profissional_id" or "")).isdigit()
+            else None
+        ),
     )
     db.session.add(new_event)
     db.session.commit()
@@ -319,6 +516,15 @@ def update_event():
                 event.end = normalize_for_storage(end_dt, end_is_date_only)
             else:
                 event.end = None
+        # Atualização opcional do dentista
+        try:
+            if "profissional_id" in data:
+                pid = data.get("profissional_id")
+                event.profissional_id = (
+                    int(pid) if str(pid).isdigit() else None
+                )
+        except Exception:
+            pass
         db.session.commit()
         return jsonify({"status": "success"})
     else:
@@ -353,6 +559,63 @@ def update_event_notes():
         return jsonify({"status": "success", "notes": notes})
     else:
         return jsonify({"status": "error", "message": "Event not found"}), 404
+
+
+# ===== Dentists (users.db) =====
+@app.route("/dentists")
+def listar_dentistas():
+    """Retorna lista de dentistas a partir de instance/users.db
+    com id, nome e cor (pode ser None). Se cor for None, o cliente usa padrão.
+    """
+    db_path = os.path.join(basedir, "instance", "users.db")
+    if not os.path.exists(db_path):
+        return jsonify([])
+    conn = None
+    try:
+        # Detectar colunas dinamicamente
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(users)")
+        cols = [row[1] for row in cur.fetchall()]
+        if "id" not in cols:
+            conn.close()
+            return jsonify([])
+        # escolher melhor coluna de nome disponível
+        name_candidates = [
+            "nome_profissional",
+            "nome",
+            "name",
+            "full_name",
+            "username",
+        ]
+        name_col = next((c for c in name_candidates if c in cols), None)
+        if not name_col:
+            name_col = "id"  # fallback
+        # checar coluna de cor (aceitar 'color' ou 'cor')
+        color_col = (
+            "color" if "color" in cols else ("cor" if "cor" in cols else None)
+        )
+        # Montar query
+        sel_cols = ["id", name_col] + ([color_col] if color_col else [])
+        q = f"SELECT {', '.join(sel_cols)} FROM users ORDER BY {name_col}"
+        cur.execute(q)
+        rows = cur.fetchall()
+        conn.close()
+        dentists = []
+        for r in rows:
+            did = r["id"]
+            name = r[name_col]
+            color_val = r[color_col] if color_col else None
+            dentists.append({"id": did, "nome": name, "color": color_val})
+        return jsonify(dentists)
+    except Exception:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        return jsonify([])
 
 
 # Endpoint para listar nomes de pacientes

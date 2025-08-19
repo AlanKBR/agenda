@@ -1,11 +1,115 @@
 /* Tema Escuro para calendário */
 :root {
     color-scheme: dark;
+    /* Bootstrap variable overrides for dark theme */
+    --bs-body-bg: #0b1220;
+    --bs-body-color: #e5e7eb;
+    --bs-card-bg: #0f172a;
+    --bs-card-color: #e5e7eb;
+    --bs-border-color: #1f2937;
+    --bs-secondary-bg: #111827;
+    --bs-heading-color: #e2e8f0;
 }
 
 body {
     background: #0b1220;
     color: #e5e7eb;
+}
+
+/* General forms in dark mode */
+input[type="text"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select,
+.form-control,
+.form-select {
+    background-color: #111827 !important;
+    color: #e5e7eb !important;
+    border: 1px solid #374151 !important;
+}
+
+.form-control::placeholder,
+textarea::placeholder {
+    color: #64748b !important;
+}
+
+.form-check-input {
+    background-color: #0b1220 !important;
+    border-color: #374151 !important;
+}
+
+.form-check-input:checked {
+    background-color: #60a5fa !important;
+    border-color: #60a5fa !important;
+}
+
+/* Dentist list / sidebar tweaks */
+#dentistsContainer {
+    background: #0f172a;
+}
+
+#dentistsContainer .dentist-list .dentist-item {
+    border-bottom-color: #1f2937 !important;
+}
+
+#dentistsSidebar {
+    background-color: var(--bs-card-bg) !important;
+    border-color: var(--bs-border-color) !important;
+    color: var(--bs-card-color) !important;
+}
+
+#dentistsSidebar .card-header {
+    background-color: var(--bs-secondary-bg) !important;
+    color: var(--bs-heading-color) !important;
+}
+
+#dentistsSidebar .card-body {
+    background-color: var(--bs-card-bg) !important;
+}
+
+#dentistsSidebar .form-check-label,
+#dentistsSidebar .small,
+#dentistsSidebar label {
+    color: #cbd5e1;
+}
+
+#dentistsSidebar .text-muted {
+    color: #94a3b8 !important;
+}
+
+#dentistsSidebar .border-top {
+    border-top-color: var(--bs-border-color) !important;
+}
+
+#dentistsSidebar .border-bottom {
+    border-bottom-color: var(--bs-border-color) !important;
+}
+
+/* Ensure cards are dark regardless of defaults */
+.card {
+    background-color: var(--bs-card-bg) !important;
+    color: var(--bs-card-color) !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+.card-header {
+    background-color: var(--bs-secondary-bg) !important;
+    color: var(--bs-heading-color) !important;
+    border-bottom: 1px solid var(--bs-border-color) !important;
+}
+
+.card-body {
+    background-color: var(--bs-card-bg) !important;
+    color: var(--bs-card-color) !important;
+}
+
+#dentistsContainer label,
+#dentistsContainer .dentist-item,
+#dentistsContainer .dentist-item .form-check-input {
+    color: #cbd5e1;
 }
 
 #calendar {
@@ -95,6 +199,24 @@ body {
 
 .fc-daygrid-day.fc-day-today {
     background: #1e293b;
+}
+
+/* Mini calendar overlays: soften in dark theme */
+.fc-holiday-bg {
+    background: rgba(239, 68, 68, 0.18) !important;
+    /* red-500 @ ~18% */
+}
+
+.fc-empty-bg {
+    background: rgba(234, 179, 8, 0.18) !important;
+    /* amber-400 @ ~18% */
+    opacity: 1 !important;
+    /* prefer alpha in bg over element opacity */
+}
+
+.fc-day-other .fc-empty-bg {
+    background: rgba(234, 179, 8, 0.12) !important;
+    /* softer for other months */
 }
 
 /* More link in month view */
@@ -187,7 +309,7 @@ body {
 .fc .fc-multimonth .fc-daygrid-day.fc-day-holiday,
 .fc .fc-daygrid-day.fc-day-holiday .fc-daygrid-day-frame {
     background: #471919 !important;
-    /* dark red tint */
+    /* kept for cell-level tint */
 }
 
 /* Popovers */
