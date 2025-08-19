@@ -6,9 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "copy:flatpickr": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force static/vendor/flatpickr/l10n | Out-Null; Copy-Item -Force node_modules/flatpickr/dist/flatpickr.min.css static/vendor/flatpickr/; Copy-Item -Force node_modules/flatpickr/dist/flatpickr.min.js static/vendor/flatpickr/; Copy-Item -Force node_modules/flatpickr/dist/l10n/pt.js static/vendor/flatpickr/l10n/\"",
-    "format:html": "js-beautify -r \"templates/**/*.html\" \"static/**/*.html\" --exclude \"**/*.min.*\"",
-    "format:css": "js-beautify -r \"static/**/*.css\" --exclude \"**/*.min.css\"",
-    "format:js": "js-beautify -r \"static/**/*.js\" --exclude \"**/*.min.js\"",
+    "format:html": "npx --no-install js-beautify -r \"templates/**/*.html\" \"static/**/*.html\" --exclude \"**/*.min.*\" --config ./.jsbeautifyrc --type html",
+    "format:css": "npx --no-install js-beautify -r \"static/**/*.css\" --exclude \"**/*.min.css\" --config ./.jsbeautifyrc --type css",
+    "format:js": "npx --no-install js-beautify -r \"static/**/*.js\" --exclude \"**/*.min.js\" --config ./.jsbeautifyrc --type js",
     "format": "npm run format:html && npm run format:css && npm run format:js"
   },
   "keywords": [],

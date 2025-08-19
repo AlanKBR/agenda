@@ -147,6 +147,190 @@ def delete_setting(key: str) -> None:
         db.session.commit()
 
 
+def _load_valid_dentist_ids() -> set[int]:
+    """Carrega os IDs válidos de dentistas a partir de instance/users.db.
+    Em caso de erro ou arquivo inexistente, retorna set() (nenhum válido
+    conhecido).
+    """
+    # Cache em memória (TTL + mtime do arquivo)
+    # Evita reabrir o DB a cada requisição de /events sem seleção de dentistas
+    try:
+        db_path = os.path.join(basedir, "instance", "users.db")
+        if not os.path.exists(db_path):
+            return set()
+        # atributos de cache
+        now = datetime.utcnow()
+        ttl = timedelta(seconds=60)
+        mtime = os.path.getmtime(db_path)
+        cache = getattr(_load_valid_dentist_ids, "_cache", None)
+        if cache and isinstance(cache, dict):
+            last_mtime = cache.get("mtime")
+            cached_at = cache.get("at")
+            cached_ids = cache.get("ids")
+            if (
+                cached_ids is not None
+                and last_mtime == mtime
+                and cached_at
+                and (now - cached_at) <= ttl
+            ):
+                return cached_ids  # type: ignore[return-value]
+        # recarregar do DB
+        conn = sqlite3.connect(db_path)
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(users)")
+            cols = [row[1] for row in cur.fetchall()]
+            if "id" not in cols:
+                ids: set[int] = set()
+            else:
+                cur.execute("SELECT id FROM users")
+                ids = {
+                    int(r[0]) for r in cur.fetchall() if r and r[0] is not None
+                }
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        # salvar cache
+        setattr(
+            _load_valid_dentist_ids,
+            "_cache",
+            {"ids": ids, "mtime": mtime, "at": now},
+        )
+        return ids
+    except Exception:
+        return set()
+
+
+# ===== Server-side caches (in-memory) =====
+# Dentists list cache: avoid hitting users.db repeatedly.
+def _load_dentists_list_cached(
+    ttl_seconds: int = 300,
+) -> tuple[list[dict], float]:
+    """Return (dentists_list, users_db_mtime).
+
+    Caches by users.db mtime and a TTL. If users.db is missing or the table is
+    incompatible, returns empty list with mtime=0.
+    """
+    try:
+        db_path = os.path.join(basedir, "instance", "users.db")
+        if not os.path.exists(db_path):
+            return [], 0.0
+        now = datetime.utcnow()
+        mtime = os.path.getmtime(db_path)
+        cache = getattr(_load_dentists_list_cached, "_cache", None)
+        if cache and isinstance(cache, dict):
+            last_mtime = cache.get("mtime")
+            cached_at = cache.get("at")
+            dentists = cache.get("dentists") or []
+            if (
+                dentists is not None
+                and last_mtime == mtime
+                and cached_at
+                and (now - cached_at) <= timedelta(seconds=ttl_seconds)
+            ):
+                return dentists, mtime  # type: ignore[return-value]
+
+        # Recompute from DB
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(users)")
+            cols = [row[1] for row in cur.fetchall()]
+            if "id" not in cols:
+                dentists: list[dict] = []
+            else:
+                name_candidates = [
+                    "nome_profissional",
+                    "nome",
+                    "name",
+                    "full_name",
+                    "username",
+                ]
+                name_col = next(
+                    (c for c in name_candidates if c in cols), None
+                )
+                if not name_col:
+                    name_col = "id"
+                color_col = (
+                    "color"
+                    if "color" in cols
+                    else ("cor" if "cor" in cols else None)
+                )
+                sel_cols = [
+                    "id",
+                    name_col,
+                ] + ([color_col] if color_col else [])
+                q = (
+                    f"SELECT {', '.join(sel_cols)} FROM users "
+                    f"ORDER BY {name_col}"
+                )
+                cur.execute(q)
+                rows = cur.fetchall()
+                dentists = []
+                for r in rows:
+                    did = r["id"]
+                    name = r[name_col]
+                    color_val = r[color_col] if color_col else None
+                    dentists.append(
+                        {"id": did, "nome": name, "color": color_val}
+                    )
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        setattr(
+            _load_dentists_list_cached,
+            "_cache",
+            {"dentists": dentists, "mtime": mtime, "at": now},
+        )
+        return dentists, mtime
+    except Exception:
+        return [], 0.0
+
+
+# Holidays caches
+_HOLIDAYS_YEAR_CACHE: dict[int, dict] = {}
+_HOLIDAYS_RANGE_CACHE: dict[tuple[str, str], dict] = {}
+_HOLIDAYS_TTL_SECONDS = 3600  # 1h
+
+
+def _invalidate_holidays_cache() -> None:
+    _HOLIDAYS_YEAR_CACHE.clear()
+    _HOLIDAYS_RANGE_CACHE.clear()
+
+
+def _invalidate_dentists_caches() -> None:
+    """Invalidate dentists-related in-memory caches."""
+    try:
+        if hasattr(_load_dentists_list_cached, "_cache"):
+            delattr(_load_dentists_list_cached, "_cache")
+    except Exception:
+        pass
+    try:
+        if hasattr(_load_valid_dentist_ids, "_cache"):
+            delattr(_load_valid_dentist_ids, "_cache")
+    except Exception:
+        pass
+
+
+@app.route("/cache/clear", methods=["POST"])
+def clear_all_caches():
+    """Clear server-side in-memory caches (holidays, dentists)."""
+    try:
+        _invalidate_holidays_cache()
+    except Exception:
+        pass
+    try:
+        _invalidate_dentists_caches()
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
 # Utilitários de data/hora: aceitar BR (dd/mm/aaaa[ HH:MM[:SS]])
 # e ISO (YYYY-MM-DD[THH:MM[:SS]])
 def _try_parse(fmt: str, s: str):
@@ -302,15 +486,22 @@ def get_events():
                 q = q.filter(or_(col_prof.in_(ids), col_prof.is_(None)))
             elif ids:
                 q = q.filter(col_prof.in_(ids))
-            elif include_unassigned:
-                q = q.filter(col_prof.is_(None))
         except Exception:
             pass
-    elif include_unassigned:
+    else:
+        # Nenhum dentista selecionado => apenas eventos com dentista
+        # inválido (id inexistente em users.db). Ignora "sem dentista".
         try:
             col_prof = getattr(CalendarEvent, "profissional_id")
-            q = q.filter(col_prof.is_(None))
+            valid_ids = _load_valid_dentist_ids()
+            # Começar exigindo que haja um id definido
+            q = q.filter(col_prof.is_not(None))
+            # Se houver ids válidos conhecidos, excluir esses; sobra
+            # somente inválidos
+            if valid_ids:
+                q = q.filter(~col_prof.in_(list(valid_ids)))
         except Exception:
+            # Se a coluna não existir, manter comportamento padrão (sem filtro)
             pass
     # When both start and end present, restrict to events that
     # intersect the range: event.end >= start AND event.start < end
@@ -382,14 +573,17 @@ def events_search_range():
                 q = q.filter(or_(col_prof.in_(ids), col_prof.is_(None)))
             elif ids:
                 q = q.filter(col_prof.in_(ids))
-            elif include_unassigned:
-                q = q.filter(col_prof.is_(None))
         except Exception:
             pass
-    elif include_unassigned:
+    else:
+        # Nenhum dentista selecionado => apenas inválidos
+        # (ignora "sem dentista")
         try:
             col_prof = getattr(CalendarEvent, "profissional_id")
-            q = q.filter(col_prof.is_(None))
+            valid_ids = _load_valid_dentist_ids()
+            q = q.filter(col_prof.is_not(None))
+            if valid_ids:
+                q = q.filter(~col_prof.in_(list(valid_ids)))
         except Exception:
             pass
     # aplicar q
@@ -567,55 +761,21 @@ def listar_dentistas():
     """Retorna lista de dentistas a partir de instance/users.db
     com id, nome e cor (pode ser None). Se cor for None, o cliente usa padrão.
     """
-    db_path = os.path.join(basedir, "instance", "users.db")
-    if not os.path.exists(db_path):
-        return jsonify([])
-    conn = None
-    try:
-        # Detectar colunas dinamicamente
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("PRAGMA table_info(users)")
-        cols = [row[1] for row in cur.fetchall()]
-        if "id" not in cols:
-            conn.close()
-            return jsonify([])
-        # escolher melhor coluna de nome disponível
-        name_candidates = [
-            "nome_profissional",
-            "nome",
-            "name",
-            "full_name",
-            "username",
-        ]
-        name_col = next((c for c in name_candidates if c in cols), None)
-        if not name_col:
-            name_col = "id"  # fallback
-        # checar coluna de cor (aceitar 'color' ou 'cor')
-        color_col = (
-            "color" if "color" in cols else ("cor" if "cor" in cols else None)
-        )
-        # Montar query
-        sel_cols = ["id", name_col] + ([color_col] if color_col else [])
-        q = f"SELECT {', '.join(sel_cols)} FROM users ORDER BY {name_col}"
-        cur.execute(q)
-        rows = cur.fetchall()
-        conn.close()
-        dentists = []
-        for r in rows:
-            did = r["id"]
-            name = r[name_col]
-            color_val = r[color_col] if color_col else None
-            dentists.append({"id": did, "nome": name, "color": color_val})
-        return jsonify(dentists)
-    except Exception:
-        try:
-            if conn:
-                conn.close()
-        except Exception:
-            pass
-        return jsonify([])
+    dentists, mtime = _load_dentists_list_cached()
+    # ETag simples com base em mtime e tamanho da lista
+    etag = f"{int(mtime)}:{len(dentists)}"
+    inm = request.headers.get("If-None-Match")
+    headers = {
+        "Cache-Control": "public, max-age=300",
+        "ETag": etag,
+    }
+    if inm and inm == etag:
+        # curto-circuito 304
+        return "", 304, headers
+    resp = jsonify(dentists)
+    for k, v in headers.items():
+        resp.headers[k] = v
+    return resp
 
 
 # Endpoint para listar nomes de pacientes
@@ -834,6 +994,11 @@ def holidays_refresh():
             except Exception:
                 continue
         db.session.commit()
+        # invalidate server-side caches
+        try:
+            _invalidate_holidays_cache()
+        except Exception:
+            pass
         return jsonify({"status": "success", "count": count})
     except Exception as e:
         return (
@@ -863,12 +1028,28 @@ def holidays_in_range():
     except Exception:
         return jsonify([])
     # SQLite string compare works for ISO dates
+    # Try in-memory cache
+    key = (start, end)
+    now = datetime.utcnow()
+    cached = _HOLIDAYS_RANGE_CACHE.get(key)
+    if cached and (now - cached.get("at", now)) <= timedelta(
+        seconds=_HOLIDAYS_TTL_SECONDS
+    ):
+        resp = jsonify(cached.get("data", []))
+        resp.headers["Cache-Control"] = (
+            f"public, max-age={_HOLIDAYS_TTL_SECONDS}"
+        )
+        return resp
     rows = (
         Holiday.query.filter(Holiday.date >= start)
         .filter(Holiday.date <= end)
         .all()
     )
-    return jsonify([h.to_dict() for h in rows])
+    data = [h.to_dict() for h in rows]
+    _HOLIDAYS_RANGE_CACHE[key] = {"data": data, "at": now}
+    resp = jsonify(data)
+    resp.headers["Cache-Control"] = f"public, max-age={_HOLIDAYS_TTL_SECONDS}"
+    return resp
 
 
 @app.route("/holidays/year")
@@ -883,8 +1064,22 @@ def holidays_by_year():
         year = 0
     if year <= 0:
         return jsonify([])
+    now = datetime.utcnow()
+    cached = _HOLIDAYS_YEAR_CACHE.get(year)
+    if cached and (now - cached.get("at", now)) <= timedelta(
+        seconds=_HOLIDAYS_TTL_SECONDS
+    ):
+        resp = jsonify(cached.get("data", []))
+        resp.headers["Cache-Control"] = (
+            f"public, max-age={_HOLIDAYS_TTL_SECONDS}"
+        )
+        return resp
     rows = Holiday.query.filter(Holiday.year == year).all()
-    return jsonify([h.to_dict() for h in rows])
+    data = [h.to_dict() for h in rows]
+    _HOLIDAYS_YEAR_CACHE[year] = {"data": data, "at": now}
+    resp = jsonify(data)
+    resp.headers["Cache-Control"] = f"public, max-age={_HOLIDAYS_TTL_SECONDS}"
+    return resp
 
 
 if __name__ == "__main__":

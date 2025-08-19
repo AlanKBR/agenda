@@ -201,22 +201,18 @@ textarea::placeholder {
     background: #1e293b;
 }
 
-/* Mini calendar overlays: soften in dark theme */
-.fc-holiday-bg {
-    background: rgba(239, 68, 68, 0.18) !important;
-    /* red-500 @ ~18% */
+/* Mini/main holiday & empty overlays: softer in dark theme, with higher specificity to override inline */
+.fc .fc-holiday-bg {
+    background: rgba(239, 68, 68, 0.06) !important; /* red-500 @ 6% */
 }
 
-.fc-empty-bg {
-    background: rgba(234, 179, 8, 0.18) !important;
-    /* amber-400 @ ~18% */
-    opacity: 1 !important;
-    /* prefer alpha in bg over element opacity */
+.fc .fc-empty-bg {
+    background: rgba(234, 179, 8, 0.10) !important; /* amber-400 @ 10% */
+    opacity: 1 !important; /* prefer alpha in bg over element opacity */
 }
 
-.fc-day-other .fc-empty-bg {
-    background: rgba(234, 179, 8, 0.12) !important;
-    /* softer for other months */
+.fc .fc-day-other .fc-empty-bg {
+    background: rgba(234, 179, 8, 0.06) !important; /* softer for other months */
 }
 
 /* More link in month view */
@@ -303,13 +299,12 @@ textarea::placeholder {
     background: #0f172a;
 }
 
-/* Holiday highlight in dark mode (month and multiMonth) */
+/* Holiday cell tint in dark mode: rely on overlay only to avoid doubling */
 .fc .fc-day-holiday,
 .fc .fc-multimonth .fc-day-holiday,
 .fc .fc-multimonth .fc-daygrid-day.fc-day-holiday,
 .fc .fc-daygrid-day.fc-day-holiday .fc-daygrid-day-frame {
-    background: #471919 !important;
-    /* kept for cell-level tint */
+    background: transparent !important;
 }
 
 /* Popovers */
