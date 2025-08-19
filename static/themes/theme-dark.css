@@ -203,16 +203,20 @@ textarea::placeholder {
 
 /* Mini/main holiday & empty overlays: softer in dark theme, with higher specificity to override inline */
 .fc .fc-holiday-bg {
-    background: rgba(239, 68, 68, 0.06) !important; /* red-500 @ 6% */
+    background: rgba(239, 68, 68, 0.06) !important;
+    /* red-500 @ 6% */
 }
 
 .fc .fc-empty-bg {
-    background: rgba(234, 179, 8, 0.10) !important; /* amber-400 @ 10% */
-    opacity: 1 !important; /* prefer alpha in bg over element opacity */
+    background: rgba(234, 179, 8, 0.10) !important;
+    /* amber-400 @ 10% */
+    opacity: 1 !important;
+    /* prefer alpha in bg over element opacity */
 }
 
 .fc .fc-day-other .fc-empty-bg {
-    background: rgba(234, 179, 8, 0.06) !important; /* softer for other months */
+    background: rgba(234, 179, 8, 0.06) !important;
+    /* softer for other months */
 }
 
 /* More link in month view */
