@@ -135,7 +135,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 const el = document.getElementById('filterNotice');
                 if (!el) return;
                 const ids = loadSelectedDentists();
-                const show = (!ids || ids.length === 0);
+                const includeUn = loadIncludeUnassigned();
+                // Mostrar aviso somente quando nada está marcado:
+                // nem dentistas específicos nem "Todos (sem dentista)"
+                const show = (!ids || ids.length === 0) && !includeUn;
                 // clear any pending
                 if (emptyNoticeTimer) { clearTimeout(emptyNoticeTimer); emptyNoticeTimer = null; }
                 if (show) {
@@ -213,6 +216,41 @@ document.addEventListener('DOMContentLoaded', function () {
                     return false;
                 } catch (e) { return false; }
             });
+        }
+        // Mutate a cached event by id (keeps coverage and key); returns updated obj or null
+        function updateEventInCacheById(id, changes) {
+            try {
+                const list = sharedEventsCache.events || [];
+                const idx = list.findIndex(e => String(e.id) === String(id));
+                if (idx === -1) return null;
+                const old = list[idx] || {};
+                const updated = { ...old, ...changes };
+                // merge extended props if provided nested (not used now, but safe)
+                if (old.extendedProps || changes?.extendedProps) {
+                    updated.extendedProps = { ...(old.extendedProps || {}), ...(changes.extendedProps || {}) };
+                }
+                list[idx] = updated;
+                sharedEventsCache.events = list;
+                return updated;
+            } catch (e) { return null; }
+        }
+        function removeEventFromCacheById(id) {
+            try {
+                if (!sharedEventsCache.events) return;
+                sharedEventsCache.events = sharedEventsCache.events.filter(e => String(e.id) !== String(id));
+            } catch (e) { /* noop */ }
+        }
+        function addEventToCache(ev) {
+            try {
+                if (!sharedEventsCache.events) sharedEventsCache.events = [];
+                // avoid duplicates by id
+                const id = ev && ev.id != null ? String(ev.id) : null;
+                if (id) {
+                    const exists = sharedEventsCache.events.some(e => String(e.id) === id);
+                    if (exists) return;
+                }
+                sharedEventsCache.events.push(ev);
+            } catch (e) { /* noop */ }
         }
         // Helper: detect a Brazilian phone number within free text (first match)
         function extractPhoneFromText(text) {
@@ -321,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 .catch(() => {
                     /* swallow; leave uncached to retry later */
-})
+                })
                 .finally(() => {
                     delete holidaysYearPending[year];
                 });
@@ -435,6 +473,35 @@ document.addEventListener('DOMContentLoaded', function () {
         function saveDentistsToStorage(list) {
             try {
                 localStorage.setItem(DENTISTS_CACHE_KEY, JSON.stringify({ list, at: Date.now() }));
+            } catch (e) { }
+        }
+
+        // Force repaint of dentist color bars for all rendered instances of a given event id
+        function repaintDentistBarsForEvent(eventId, pid) {
+            try {
+                const els = document.querySelectorAll(`[data-eid="${eventId}"]`);
+                let col = null;
+                if (pid != null && dentistsCache && dentistsCache.map && dentistsCache.map[pid]) {
+                    const d = dentistsCache.map[pid];
+                    col = colorForDentist(d);
+                }
+                els.forEach(el => {
+                    // Ensure classes exist for styling consistency
+                    if (col) {
+                        el.classList.add('dentist-rightbar');
+                        el.classList.add('dentist-leftbar');
+                        el.style.borderRight = `6px solid ${col}`;
+                        el.style.borderLeft = `2px solid ${col}`;
+                        try { el.style.boxShadow = `inset -6px 0 0 0 ${col}`; } catch (e) { }
+                    } else {
+                        // No dentist: remove custom bars
+                        el.style.borderRight = '';
+                        el.style.borderLeft = '';
+                        try { el.style.boxShadow = ''; } catch (e) { }
+                        el.classList.remove('dentist-rightbar');
+                        el.classList.remove('dentist-leftbar');
+                    }
+                });
             } catch (e) { }
         }
 
@@ -1217,11 +1284,9 @@ document.addEventListener('DOMContentLoaded', function () {
                             .then(r => r.json())
                             .then(data => {
                                 if (data.status === 'success') {
-                                    // Atualiza dados no cliente e refaz fetch
-                                    info.event.setExtendedProp('notes', newNotes);
-                                    try {
-                                        calendar.refetchEvents();
-                                    } catch (e) { }
+                                    try { info.event.setExtendedProp('notes', newNotes); } catch (e) { }
+                                    updateEventInCacheById(info.event.id, { notes: newNotes });
+                                    try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
                                 } else {
                                     alert('Erro ao salvar descrição.');
                                 }
@@ -1264,11 +1329,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                 .then(r => r.json())
                                 .then(j => {
                                     if (j && j.status === 'success') {
-                                        // atualizar no cliente e refazer fetch
-                                        info.event.setExtendedProp('profissional_id', pid);
-                                        try {
-                                            calendar.refetchEvents();
-                                        } catch (e) { }
+                                        try { info.event.setExtendedProp('profissional_id', pid); } catch (e) { }
+                                        updateEventInCacheById(info.event.id, { profissional_id: pid });
+                                        // Re-render events to re-run eventDidMount and apply new dentist colors
+                                        try { calendar.rerenderEvents(); } catch (e) { }
+                                        // Also directly repaint current DOM nodes for immediate feedback
+                                        try { repaintDentistBarsForEvent(info.event.id, pid); } catch (e) { }
+                                        try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
                                     } else {
                                         alert('Erro ao salvar dentista.');
                                     }
@@ -1523,16 +1590,22 @@ document.addEventListener('DOMContentLoaded', function () {
                                 body: JSON.stringify(body)
                             })
                                 .then(r => r.json()).then(j => {
-                                    if (j && j.status === 'success') {
-                                        calendar.refetchEvents();
-                                        closeMenu();
+                                    if (j && j.status === 'success' && j.event) {
+                                        try {
+                                            calendar.addEvent(j.event);
+                                            addEventToCache(j.event);
+                                            try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
+                                            closeMenu();
+                                        } catch (e) {
+                                            calendar.refetchEvents();
+                                        }
                                     } else {
                                         alert('Erro ao duplicar evento.');
                                     }
                                 }).catch(() => alert('Erro ao duplicar evento.'));
                         } catch (e) {
                             /* noop */
-}
+                        }
                     }
                     const dup1w = document.getElementById('dup1wBtn');
                     const dup2w = document.getElementById('dup2wBtn');
@@ -1573,7 +1646,9 @@ document.addEventListener('DOMContentLoaded', function () {
                             .then(response => response.json())
                             .then(data => {
                                 if (data.status === 'success') {
-                                    calendar.refetchEvents();
+                                    try { info.event.remove(); } catch (e) { }
+                                    removeEventFromCacheById(info.event.id);
+                                    try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
                                     closeMenu();
                                 } else {
                                     alert('Erro ao deletar evento!');
@@ -1596,7 +1671,12 @@ document.addEventListener('DOMContentLoaded', function () {
                                 .then(response => response.json())
                                 .then(data => {
                                     if (data.status === 'success') {
-                                        calendar.refetchEvents();
+                                        try {
+                                            info.event.setProp('backgroundColor', color);
+                                            info.event.setProp('borderColor', color);
+                                        } catch (e) { }
+                                        updateEventInCacheById(info.event.id, { color });
+                                        try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
                                         closeMenu();
                                     } else {
                                         alert('Erro ao atualizar cor!');
@@ -1657,7 +1737,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (main) main.innerHTML = html;
                     } catch (e) {
                         /* noop */
-}
+                    }
                 }, 0);
                 // aplicar filtro de busca para novos elementos
                 try {
@@ -1980,7 +2060,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             } catch (e) {
                 /* noop */
-}
+            }
         })();
 
         // Carregar dentistas e montar sidebar (dedup + TTL cache) antes de qualquer refetch

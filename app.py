@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -20,6 +21,27 @@ db_uri = "sqlite:///" + db_file.replace("\\", "/")
 app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+
+
+# Helpers: timezone-aware UTC now and coercion for cached values
+# UTC constant from datetime module (Python 3.11+)
+UTC = dt.UTC
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _ensure_aware_utc(d: datetime | None) -> datetime | None:
+    if d is None:
+        return None
+    try:
+        if d.tzinfo is None:
+            return d.replace(tzinfo=UTC)
+        return d.astimezone(UTC)
+    except Exception:
+        return d
+
 
 # SQLAlchemy model for events
 
@@ -159,13 +181,13 @@ def _load_valid_dentist_ids() -> set[int]:
         if not os.path.exists(db_path):
             return set()
         # atributos de cache
-        now = datetime.utcnow()
+        now = _utcnow()
         ttl = timedelta(seconds=60)
         mtime = os.path.getmtime(db_path)
         cache = getattr(_load_valid_dentist_ids, "_cache", None)
         if cache and isinstance(cache, dict):
             last_mtime = cache.get("mtime")
-            cached_at = cache.get("at")
+            cached_at = _ensure_aware_utc(cache.get("at"))
             cached_ids = cache.get("ids")
             if (
                 cached_ids is not None
@@ -217,12 +239,12 @@ def _load_dentists_list_cached(
         db_path = os.path.join(basedir, "instance", "users.db")
         if not os.path.exists(db_path):
             return [], 0.0
-        now = datetime.utcnow()
+        now = _utcnow()
         mtime = os.path.getmtime(db_path)
         cache = getattr(_load_dentists_list_cached, "_cache", None)
         if cache and isinstance(cache, dict):
             last_mtime = cache.get("mtime")
-            cached_at = cache.get("at")
+            cached_at = _ensure_aware_utc(cache.get("at"))
             dentists = cache.get("dentists") or []
             if (
                 dentists is not None
@@ -489,17 +511,20 @@ def get_events():
         except Exception:
             pass
     else:
-        # Nenhum dentista selecionado => apenas eventos com dentista
-        # inválido (id inexistente em users.db). Ignora "sem dentista".
+        # Sem ids selecionados
         try:
             col_prof = getattr(CalendarEvent, "profissional_id")
-            valid_ids = _load_valid_dentist_ids()
-            # Começar exigindo que haja um id definido
-            q = q.filter(col_prof.is_not(None))
-            # Se houver ids válidos conhecidos, excluir esses; sobra
-            # somente inválidos
-            if valid_ids:
-                q = q.filter(~col_prof.in_(list(valid_ids)))
+            if include_unassigned:
+                # Somente "Todos (sem dentista)" selecionado:
+                # retornar apenas sem dentista
+                q = q.filter(col_prof.is_(None))
+            else:
+                # Nenhuma opção marcada:
+                # apenas inválidos (ignora sem dentista)
+                valid_ids = _load_valid_dentist_ids()
+                q = q.filter(col_prof.is_not(None))
+                if valid_ids:
+                    q = q.filter(~col_prof.in_(list(valid_ids)))
         except Exception:
             # Se a coluna não existir, manter comportamento padrão (sem filtro)
             pass
@@ -576,14 +601,19 @@ def events_search_range():
         except Exception:
             pass
     else:
-        # Nenhum dentista selecionado => apenas inválidos
-        # (ignora "sem dentista")
+        # Sem ids selecionados
         try:
             col_prof = getattr(CalendarEvent, "profissional_id")
-            valid_ids = _load_valid_dentist_ids()
-            q = q.filter(col_prof.is_not(None))
-            if valid_ids:
-                q = q.filter(~col_prof.in_(list(valid_ids)))
+            if include_unassigned:
+                # Somente "Todos (sem dentista)" selecionado:
+                # somente sem dentista
+                q = q.filter(col_prof.is_(None))
+            else:
+                # Nenhuma opção marcada => apenas inválidos
+                valid_ids = _load_valid_dentist_ids()
+                q = q.filter(col_prof.is_not(None))
+                if valid_ids:
+                    q = q.filter(~col_prof.in_(list(valid_ids)))
         except Exception:
             pass
     # aplicar q
@@ -1030,10 +1060,17 @@ def holidays_in_range():
     # SQLite string compare works for ISO dates
     # Try in-memory cache
     key = (start, end)
-    now = datetime.utcnow()
+    now = _utcnow()
     cached = _HOLIDAYS_RANGE_CACHE.get(key)
-    if cached and (now - cached.get("at", now)) <= timedelta(
-        seconds=_HOLIDAYS_TTL_SECONDS
+    cached_at = (
+        _ensure_aware_utc(cached.get("at") if cached else None)
+        if cached
+        else None
+    )
+    if (
+        cached
+        and cached_at
+        and (now - cached_at) <= timedelta(seconds=_HOLIDAYS_TTL_SECONDS)
     ):
         resp = jsonify(cached.get("data", []))
         resp.headers["Cache-Control"] = (
@@ -1064,10 +1101,17 @@ def holidays_by_year():
         year = 0
     if year <= 0:
         return jsonify([])
-    now = datetime.utcnow()
+    now = _utcnow()
     cached = _HOLIDAYS_YEAR_CACHE.get(year)
-    if cached and (now - cached.get("at", now)) <= timedelta(
-        seconds=_HOLIDAYS_TTL_SECONDS
+    cached_at = (
+        _ensure_aware_utc(cached.get("at") if cached else None)
+        if cached
+        else None
+    )
+    if (
+        cached
+        and cached_at
+        and (now - cached_at) <= timedelta(seconds=_HOLIDAYS_TTL_SECONDS)
     ):
         resp = jsonify(cached.get("data", []))
         resp.headers["Cache-Control"] = (
