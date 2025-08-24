@@ -1204,8 +1204,17 @@ document.addEventListener('DOMContentLoaded', function () {
                         })
                             .then(response => response.json())
                             .then(data => {
-                                if (data.status === 'success') {
-                                    calendar.refetchEvents();
+                                if (data.status === 'success' && data.event) {
+                                    try {
+                                        // Adiciona imediatamente no calendário e no cache compartilhado
+                                        calendar.addEvent(data.event);
+                                        addEventToCache(data.event);
+                                        try { if (window.__miniCalendar) window.__miniCalendar.refetchEvents(); } catch (e) { }
+                                        try { showToast('Evento criado.', 'success', 1600); } catch (e) { }
+                                    } catch (e) {
+                                        // Fallback: força recarregar eventos
+                                        try { calendar.refetchEvents(); } catch (_) { }
+                                    }
                                     closePopover();
                                 } else {
                                     alert('Erro ao adicionar evento!');

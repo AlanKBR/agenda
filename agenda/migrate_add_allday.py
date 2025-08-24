@@ -1,6 +1,12 @@
+import os
 import sqlite3
 
-conn = sqlite3.connect("instance/calendario.db")
+db_path = os.path.join(
+    os.path.dirname(__file__), os.pardir, "instance", "calendario.db"
+)
+db_path = os.path.abspath(db_path)
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+conn = sqlite3.connect(db_path)
 c = conn.cursor()
 try:
     c.execute(

@@ -1,8 +1,14 @@
+import os
 import sqlite3
 
 # Verificar estrutura do users.db
 try:
-    conn = sqlite3.connect("instance/users.db")
+    users_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), os.pardir, "instance", "users.db"
+        )
+    )
+    conn = sqlite3.connect(users_path)
     cursor = conn.cursor()
 
     # Listar tabelas
@@ -27,7 +33,12 @@ except Exception as e:
 
 # Verificar estrutura do pacientes.db também
 try:
-    conn = sqlite3.connect("instance/pacientes.db")
+    pacientes_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), os.pardir, "instance", "pacientes.db"
+        )
+    )
+    conn = sqlite3.connect(pacientes_path)
     cursor = conn.cursor()
 
     # Listar tabelas
@@ -51,7 +62,13 @@ except Exception as e:
     print("Erro ao acessar pacientes.db:", e)
 
 # Verificar estrutura do calendario.db (raiz e instance)
-for path in ["calendario.db", "instance/calendario.db"]:
+for path in [
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), os.pardir, "instance", "calendario.db"
+        )
+    ),
+]:
     try:
         print(f"\nVerificando {path}...")
         conn = sqlite3.connect(path)

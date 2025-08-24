@@ -1,0 +1,2 @@
+# Runtime dependencies to use the agenda module from this repository
+-r agenda/requirements.txt
